@@ -1,0 +1,49 @@
+{
+	"name": "deepshift",
+	"displayName": "DeepShift — DeepSeek Peak/Off-Peak Timer",
+	"description": "Status bar countdown to DeepSeek API off-peak hours (00:30–08:30 Beijing time). Works in VS Code, Cursor, Windsurf and other forks.",
+	"version": "0.2.0",
+	"publisher": "your-publisher-here",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.80.0"
+	},
+	"categories": ["Other"],
+	"activationEvents": ["onStartupFinished"],
+	"main": "./out/extension.js",
+	"contributes": {
+		"commands": [
+			{ "command": "deepshift.openPanel", "title": "DeepShift: Open Panel" },
+			{ "command": "deepshift.copyStatus", "title": "DeepShift: Copy Status" },
+			{ "command": "deepshift.diagnostics", "title": "DeepShift: Diagnose Timezone" }
+		],
+		"configuration": {
+			"title": "DeepShift",
+			"properties": {
+				"deepshift.notifyBeforePeakStarts": {
+					"type": "number",
+					"default": 10,
+					"minimum": 0,
+					"description": "Minutes before peak pricing starts to show a warning. 0 disables."
+				},
+				"deepshift.notifyBeforeOffPeakStarts": {
+					"type": "number",
+					"default": 10,
+					"minimum": 0,
+					"description": "Minutes before off-peak pricing starts to show a notification. 0 disables."
+				}
+			}
+		}
+	},
+	"scripts": {
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"test": "tsc -p ./ && node out/schedule.test.js",
+		"vscode:prepublish": "tsc -p ./"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@types/vscode": "^1.80.0",
+		"typescript": "^5.4.0"
+	}
+}
