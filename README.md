@@ -19,7 +19,7 @@ Effective 2026-08-16/17 (TechNode / TechTimes, verified). V4 output rates per 1M
 
 ## Install
 
-Marketplace: `asimalipeerzada.deepshift` — or sideload the `.vsix`:
+Marketplace: `AsimAliPeerzada.deepshift` — or sideload the `.vsix`:
 ```sh
 code --install-extension deepshift-0.2.0.vsix
 windsurf --install-extension deepshift-0.2.0.vsix
@@ -45,4 +45,4 @@ npx vsce package
 
 ## Publish
 
-Publisher is `asimalipeerzada` (`package.json:publisher`), repository is `asim-ali-peerzada/deepshift` (matches `git remote`). Ensure `icon.png` (128×128) is present at repo root, then `npx vsce package` and upload the `.vsix` at https://marketplace.visualstudio.com/manage/publishers/asimalipeerzada → New Extension. License: MIT.
+Publisher is `AsimAliPeerzada` (`package.json:publisher`), repository is `asim-ali-peerzada/deepshift` (matches `git remote`). Ensure `icon.png` (128×128) is present at repo root, then `npx vsce package` and upload the `.vsix` at https://marketplace.visualstudio.com/manage/publishers/AsimAliPeerzada → New Extension. License: MIT.

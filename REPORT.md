@@ -1,7 +1,7 @@
 # DeepShift — Full Extension Report
 
 **Name:** DeepShift — DeepSeek Peak/Off-Peak Timer
-**ID:** `asimalipeerzada.deepshift` · **Version:** 0.2.0 · **Engine:** VS Code `^1.80.0`
+**ID:** `AsimAliPeerzada.deepshift` · **Version:** 0.2.0 · **Engine:** VS Code `^1.80.0`
 **Built artifact:** `deepshift-0.2.0.vsix` (26.9 KB, 9 files via `vsce ls`)
 
 ---
