@@ -1,5 +1,9 @@
+.vscode/**
 src/**
-node_modules/**
-.vscode**
+out/**/*.test.js
+REPORT.md
+*.vsix
+image.png
+dsift-logo.jpeg
+.gitignore
 tsconfig.json
-out/clock.test.js

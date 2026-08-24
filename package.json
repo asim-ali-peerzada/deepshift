@@ -1,10 +1,16 @@
 {
 	"name": "deepshift",
 	"displayName": "DeepShift — DeepSeek Peak/Off-Peak Timer",
-	"description": "Status bar countdown to DeepSeek API off-peak hours (00:30–08:30 Beijing time). Works in VS Code, Cursor, Windsurf and other forks.",
+	"description": "DeepSeek V4 peak/off-peak countdown (09:00-12:00 & 14:00-18:00 Beijing, weekends off-peak). Status bar + panel with local/Beijing times and pricing.",
 	"version": "0.2.0",
-	"publisher": "your-publisher-here",
+	"publisher": "asimalipeerzada",
 	"license": "MIT",
+	"icon": "icon.png",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/asim-ali-peerzada/deepshift"
+	},
+	"keywords": ["deepseek", "pricing", "off-peak", "timer", "peak", "cost", "vscode"],
 	"engines": {
 		"vscode": "^1.80.0"
 	},
