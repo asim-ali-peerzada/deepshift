@@ -13,6 +13,22 @@ Peak is **09:00–12:00 & 14:00–18:00 Beijing** (`01:00–04:00 & 06:00–10:0
 
 Works via standard `StatusBarItem`/`ThemeColor`/`MarkdownString`/`QuickPick` APIs — no webviews, no runtime deps.
 
+## Screenshots
+
+### Status bar
+
+![DeepShift off-peak status](https://raw.githubusercontent.com/asim-ali-peerzada/deepshift/main/media/off.png)
+
+![DeepShift peak status](https://raw.githubusercontent.com/asim-ali-peerzada/deepshift/main/media/peak.png)
+
+### Planning panel
+
+![DeepShift planning panel](https://raw.githubusercontent.com/asim-ali-peerzada/deepshift/main/media/planning.png)
+
+### Tooltip
+
+![DeepShift tooltip](https://raw.githubusercontent.com/asim-ali-peerzada/deepshift/main/media/tooltip.png)
+
 ## Schedule & pricing
 
 Effective 2026-08-16/17 (TechNode / TechTimes, verified). V4 output rates per 1M tokens, USD: `Flash $1.32 peak / $0.66 off`, `Pro $3.96 peak / $1.98 off`.
