@@ -6,40 +6,33 @@ import {
 	deepSeekV4,
 	getTodaySchedule,
 	getUserTimeZone,
+	buildTooltip,
+	holidayCoverageYears,
+	offPeakReason,
+	windowText,
 	tzInfo,
+	fmtTime,
 } from './schedule';
 
-function fmtTime(at: number, tz?: string): string {
-	return new Date(at).toLocaleTimeString([], {
-		hour: '2-digit',
-		minute: '2-digit',
-		...(tz && { timeZone: tz }),
-	});
-}
+const LBL_COPY_STATUS = '📋 Copy current status';
+const LBL_COPY_SCHEDULE = "📋 Copy today's schedule";
+const LBL_RUN_NOW = '💡 Should I run now?';
 
 function statusText(s: ReturnType<typeof getState>): string {
 	const cd = formatCountdownSec(s.secondsRemaining);
-	if (s.isWeekend) return `🟢 DS OFF · Weekend · ${cd}`;
+	const why = offPeakReason(s);
+	if (why) return `🟢 DS OFF · ${why} · ${cd}`;
 	if (s.isOffPeak) return `🟢 DS OFF · ${cd}`;
 	return `🔴 DS PEAK · ${cd}`;
 }
 
 function scheduleText(): string {
 	const day = getTodaySchedule();
-	if (day.isWeekend) return `DeepSeek V4 — ${day.tz}\nWeekend: all day off-peak`;
-	const lines = day.windows.map((w) => `${w.start}–${w.end} Peak`);
+	if (day.isWeekend) return `DeepSeek — ${day.tz}\nWeekend: all day off-peak`;
+	if (day.isHoliday) return `DeepSeek — ${day.tz}\nChinese public holiday: all day off-peak`;
+	const lines = day.windows.map((x) => `${x.start}–${x.end} Peak`);
 	lines.push('Other hours: Off-peak');
-	return `DeepSeek V4 — ${day.tz}\n${lines.join('\n')}`;
-}
-
-function pricing(): {
-	flash: { peak: string; offPeak: string };
-	pro: { peak: string; offPeak: string };
-	note: string;
-} | null {
-	const pr = deepSeekV4.prices;
-	if (!pr) return null;
-	return { flash: pr.flash, pro: pr.pro, note: pr.note };
+	return `DeepSeek — ${day.tz}\n${lines.join('\n')}`;
 }
 
 function shortHour(epoch: number): string {
@@ -86,47 +79,71 @@ function buildPanelItems(s: ReturnType<typeof getState>): vscode.QuickPickItem[]
 		items.push({ label: `Then   ${to} · ${fmtTime(t.at)} ${dayTag(t.at)}` });
 	}
 	if (s.bestWindow && s.bestWindow.end > s.bestWindow.start) {
-		const ms = s.bestWindow.end - s.bestWindow.start;
-		const h = Math.floor(ms / 3600000);
-		const m = Math.floor((ms % 3600000) / 60000);
 		items.push({
 			label: '💡 Best off-peak window',
 			detail: `${fmtTime(s.bestWindow.start)} ${dayTag(s.bestWindow.start)} → ${fmtTime(
 				s.bestWindow.end
-			)} ${dayTag(s.bestWindow.end)} · ${h}h ${m}m`,
+			)} ${dayTag(s.bestWindow.end)} · ${formatCountdown(
+				Math.round((s.bestWindow.end - s.bestWindow.start) / 60000)
+			)}`,
 		});
 	}
 
-	const dayTz = getUserTimeZone();
-	const dayCountry = tzInfo(dayTz);
 	items.push({
-		label: `──── Today’s schedule ${dayCountry.flag} ${dayCountry.country} (${dayTz}) ────`,
+		label: `──── Today's schedule ${user.flag} ${user.country} (${userTz}) ────`,
 		kind: vscode.QuickPickItemKind.Separator,
 	});
 	const day = getTodaySchedule();
 	if (day.isWeekend) {
 		items.push({ label: '🟢 Off-peak', detail: 'All day (weekend rule)' });
+	} else if (day.isHoliday) {
+		items.push({ label: '🟢 Off-peak', detail: 'All day (Chinese public holiday)' });
 	} else {
 		for (const w of day.windows)
 			items.push({ label: `${shortHour(w.startEpoch)}–${shortHour(w.endEpoch)} 🔴 Peak` });
 		items.push({ label: 'Other hours 🟢 Off-peak' });
 	}
 
-	items.push({ label: '💡 Should I run now?', detail: 'Rule-based advice, no input needed' });
+	items.push({ label: LBL_RUN_NOW, detail: 'Rule-based advice, no input needed' });
 
-	items.push({ label: '──── More ────', kind: vscode.QuickPickItemKind.Separator });
-	const pr = pricing();
-	if (pr) {
-		items.push({ label: '──── Pricing (USD / 1M output) ────', kind: vscode.QuickPickItemKind.Separator });
-		items.push({ label: 'V4-Flash', detail: `Peak ${pr.flash.peak} · Off-peak ${pr.flash.offPeak}` });
-		items.push({ label: 'V4-Pro', detail: `Peak ${pr.pro.peak} · Off-peak ${pr.pro.offPeak}` });
+	items.push({ label: '──── Pricing ────', kind: vscode.QuickPickItemKind.Separator });
+	for (const m of deepSeekV4.models) {
+		items.push({ label: m.id, description: m.version });
+		items.push({
+			label: '  input · cache hit',
+			detail: `Peak ${m.cacheHit.peak} · off-peak ${m.cacheHit.offPeak}`,
+		});
+		items.push({
+			label: '  input · cache miss',
+			detail: `Peak ${m.cacheMiss.peak} · off-peak ${m.cacheMiss.offPeak}`,
+		});
+		items.push({
+			label: '  output',
+			detail: `Peak ${m.output.peak} · off-peak ${m.output.offPeak}`,
+		});
+		items.push({ label: '  concurrency limit', detail: `${m.concurrency} in-flight` });
 	}
+	items.push({ label: '  note', detail: deepSeekV4.note });
+
+	const years = holidayCoverageYears();
+	const thisYear = new Date().getFullYear();
+	if (!years.includes(thisYear)) {
+		items.push({
+			label: '⚠ Holiday calendar out of date',
+			detail: `Covers ${years[0]}–${years[years.length - 1]}. Chinese holidays are NOT applied for ${thisYear} — verify against the official page before trusting peak days.`,
+		});
+	}
+
 	items.push({
 		label: 'Schedule',
-		detail: `DeepSeek V4 · 🇨🇳 China (${deepSeekV4.timezone}) · verify official docs`,
+		detail: `DeepSeek · 🇨🇳 China (${deepSeekV4.timezone}) · ${windowText()}`,
 	});
-	items.push({ label: '📋 Copy current status' });
-	items.push({ label: '📋 Copy today’s schedule' });
+	items.push({
+		label: '📖 Official pricing page',
+		detail: `Verified ${deepSeekV4.verifiedOn} · ${deepSeekV4.sourceUrl}`,
+	});
+	items.push({ label: LBL_COPY_STATUS });
+	items.push({ label: LBL_COPY_SCHEDULE });
 	return items;
 }
 
@@ -140,13 +157,13 @@ function openPanel() {
 	qp.placeholder = 'DeepSeek pricing window';
 	qp.onDidChangeSelection((sel) => {
 		const label = sel[0]?.label ?? '';
-		if (label.includes('Copy current')) {
+		if (label === LBL_COPY_STATUS) {
 			vscode.env.clipboard.writeText(statusText(s));
 			vscode.window.showInformationMessage('DeepShift status copied.');
-		} else if (label.includes('Copy today')) {
+		} else if (label === LBL_COPY_SCHEDULE) {
 			vscode.env.clipboard.writeText(scheduleText());
 			vscode.window.showInformationMessage('Schedule copied.');
-		} else if (label.includes('Should I run')) {
+		} else if (label === LBL_RUN_NOW) {
 			const adv = s.isOffPeak
 				? 'OFF-PEAK — good time for large AI workloads. Run batch jobs now.'
 				: `PEAK — large/batch workloads are cheaper if delayed. Off-peak starts in ${formatCountdownSec(
@@ -166,6 +183,7 @@ function diagnostics() {
 	const user = tzInfo(userTz);
 	const bj = tzInfo('Asia/Shanghai');
 	// ponytail: diagnostics is verbose by request — not debt
+	const years = holidayCoverageYears();
 	const lines = [
 		`System timezone: ${userTz} ${user.flag} ${user.country}`,
 		`Local time: ${fmtTime(now.getTime())} ${user.flag}`,
@@ -174,7 +192,11 @@ function diagnostics() {
 		`Schedule timezone: ${deepSeekV4.timezone} ${bj.flag} ${bj.country}`,
 		`Weekend evaluated in: ${deepSeekV4.timezone} ${bj.flag}`,
 		`Weekend off-peak: ${deepSeekV4.weekendOffPeak}`,
+		`Holiday off-peak: ${deepSeekV4.holidayOffPeak}`,
+		`Holiday calendar covers: ${years[0]}-${years[years.length - 1]}${years.includes(now.getFullYear()) ? '' : '  (STALE — no data for this year)'}`,
 		`Peak windows (Beijing): ${deepSeekV4.peakWindows.map((w) => `${w.start}-${w.end}`).join(', ')}`,
+		`Prices verified: ${deepSeekV4.verifiedOn}`,
+		`Source: ${deepSeekV4.sourceUrl}`,
 	];
 	vscode.window.showInformationMessage('DeepShift Diagnostics', {
 		modal: true,
@@ -192,7 +214,6 @@ export function activate(context: vscode.ExtensionContext) {
 	function update() {
 		const s = getState();
 		const cdSec = formatCountdownSec(s.secondsRemaining);
-		const cdMin = formatCountdown(s.minutesRemaining);
 
 		item.text = statusText(s);
 		// No background fill: emoji dot + text carry the state, so peak stays
@@ -203,23 +224,7 @@ export function activate(context: vscode.ExtensionContext) {
 		// Tooltip is minute-stable (no seconds) and only reassigned when
 		// content actually changes — otherwise a 1s tick makes the hover
 		// tooltip jump in/out every second.
-		const pr = pricing();
-		const userTz = getUserTimeZone();
-		const user = tzInfo(userTz);
-		const nextTooltip =
-			`**DeepSeek V4**\n\n` +
-			`${s.isOffPeak ? '🟢 OFF-PEAK' : '🔴 PEAK PRICING'}${s.isWeekend ? ' (weekend)' : ''}\n\n` +
-			`Window ends in **${cdMin}**\n\n` +
-			`${user.flag} Local: **${fmtTime(s.transitionAt)}** ${user.country} (${userTz})\n` +
-			`🇨🇳 Beijing: **${fmtTime(s.transitionAt, 'Asia/Shanghai')}** China\n\n` +
-			(pr
-				? `**Pricing** USD per 1M output tokens\n\n` +
-				  `- **Flash**: peak ${pr.flash.peak} · off-peak ${pr.flash.offPeak}\n` +
-				  `- **Pro**: peak ${pr.pro.peak} · off-peak ${pr.pro.offPeak}\n\n` +
-				  `${pr.note}\n\n`
-				: '') +
-			(deepSeekV4.weekendOffPeak ? 'Weekends: always off-peak\n\n' : '') +
-			`Schedule (Beijing 09:00–12:00 & 14:00–18:00, else off-peak) 🇨🇳`;
+		const nextTooltip = buildTooltip(s, getUserTimeZone());
 		if (nextTooltip !== lastTooltip) {
 			item.tooltip = new vscode.MarkdownString(nextTooltip);
 			lastTooltip = nextTooltip;

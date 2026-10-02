@@ -1,9 +1,9 @@
 {
 	"name": "deepshift",
 	"displayName": "DeepShift — DeepSeek Peak/Off-Peak Timer",
-	"description": "DeepSeek V4 peak/off-peak countdown (09:00-12:00 & 14:00-18:00 Beijing, weekends off-peak). Status bar + panel with local/Beijing times and pricing.",
-	"version": "0.2.0",
-	"publisher": "asimalipeerzada",
+	"description": "DeepSeek peak/off-peak countdown (09:00-12:00 & 14:00-18:00 Beijing, weekends and Chinese public holidays off-peak). Status bar + panel with local/Beijing times, per-model rate card and verification date.",
+	"version": "0.3.1",
+	"publisher": "AsimAliPeerzada",
 	"license": "MIT",
 	"icon": "icon.png",
 	"repository": {

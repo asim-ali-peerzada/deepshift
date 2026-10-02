@@ -2,7 +2,8 @@
 
 **Name:** DeepShift — DeepSeek Peak/Off-Peak Timer
 **ID:** `AsimAliPeerzada.deepshift` · **Version:** 0.2.0 · **Engine:** VS Code `^1.80.0`
-**Built artifact:** `deepshift-0.2.0.vsix` (26.9 KB, 9 files via `vsce ls`)
+**Built artifact:** `deepshift-0.2.0.vsix` (26.9 KB, 9 production files via `vsce ls`)
+**Distribution:** Published on the VS Code Marketplace and Open VSX under publisher `AsimAliPeerzada`.
 
 ---
 
@@ -15,11 +16,24 @@ countdowns, and a click-to-open planning panel.
 
 ## 2. The Schedule (verified)
 
-Effective **2026-08-16/17** (TechNode, TechTimes):
+Verified **2026-10-02** against the official rate card,
+<https://api-docs.deepseek.com/quick_start/pricing/> (EN and zh-CN):
 
-- **Peak (Beijing):** `09:00–12:00` and `14:00–18:00` → in UTC `01:00–04:00` and `06:00–10:00`
-- **Off-peak:** every other hour, **plus all of Saturday and Sunday**
-- **Pricing:** off-peak = 50% of peak. V4-Pro output ≈ **$3.96 / 1M tokens peak**, **$1.98 off-peak**.
+- **Peak (Beijing):** `09:00–12:00` and `14:00–18:00`, Mon–Fri → in UTC `01:00–04:00` and `06:00–10:00`
+- **Off-peak:** every other hour, **plus weekends and Chinese public holidays in full**
+- **Pricing:** off-peak = 50% of peak. USD per 1M tokens:
+
+| Model | Version | in (hit) | in (miss) | output | concurrency |
+|---|---|---|---|---|---|
+| `deepseek-flash` | DeepSeek-V4.1-Flash | $0.006 / $0.003 | $0.30 / $0.15 | $1.20 / $0.60 | 2500 |
+| `deepseek-v4-pro` | DeepSeek-V4-Pro-0813 | $0.044 / $0.022 | $1.32 / $0.66 | $3.96 / $1.98 | 500 |
+
+Each cell is *peak / off-peak*. `deepseek-v4-flash` was retired 2026-09-10 and now routes to V4.1 Flash.
+
+> An earlier revision of this document (and 0.2.0) cited TechTimes for
+> `deepseek-flash` output at **$1.32 peak / $0.66 off-peak**. That is wrong: those are
+> V4-Pro's *cache-miss input* rates, transposed onto Flash output by several news
+> outlets when prices rose on 2026-08-13. Corrected here against the official table.
 
 The earlier "00:30–08:30 Beijing" (16:30–00:30 UTC) window was the **pre-V4** schedule and is
 now obsolete — the engine was rewritten around the current V4 policy.
@@ -28,7 +42,7 @@ now obsolete — the engine was rewritten around the current V4 policy.
 
 | Before DeepShift | With DeepShift |
 |---|---|
-| Manually converting Beijing time + tracking weekends | Automatic from `Asia/Shanghai`, recomputed every 30 s |
+| Manually converting Beijing time + tracking weekends | Automatic from `Asia/Shanghai`, recomputed every second |
 | Guessing when the next cheap window opens | Status bar countdown + "Next"/"Then" transitions in the panel |
 | No plan beyond "is it peak now?" | Best off-peak window (start→end + duration), today's schedule |
 | Running bulk jobs into peak pricing | Optional alerts before peak starts *and* before off-peak starts |
@@ -49,7 +63,7 @@ deepshift/
 ├── .vscodeignore            Excludes src/, tests etc. from the packaged .vsix
 ├── README.md                Short user-facing doc
 ├── REPORT.md                This document
-├── deepshift-0.1.0.vsix     Installable package produced by `vsce`
+├── deepshift-0.2.0.vsix     Installable package produced by `vsce` (excluded from source control)
 └── package-lock.json        Dependency lockfile
 ```
 
@@ -68,7 +82,16 @@ The single source of truth, pure and vscode-free so it runs in Node and the exte
   ```ts
   { timezone: 'Asia/Shanghai', weekendOffPeak: true,
     peakWindows: [{start:'09:00',end:'12:00'},{start:'14:00',end:'18:00'}],
-    prices: { peak:'$3.96', offPeak:'$1.98', note:'V4-Pro output / 1M tokens · off-peak = 50%' } }
+    holidayOffPeak: true,
+    holidays: ['2026-01-01', /* ... */ '2026-10-07', /* 2027 provisional */],
+    models: [
+      { id:'deepseek-flash',  version:'DeepSeek-V4.1-Flash',
+        output:{peak:'$1.20',offPeak:'$0.60'},   concurrency:2500 },
+      { id:'deepseek-v4-pro', version:'DeepSeek-V4-Pro-0813',
+        output:{peak:'$3.96',offPeak:'$1.98'},   concurrency:500 } ],
+    note:'Off-peak = 50% of peak · USD per 1M tokens',
+    verifiedOn:'2026-10-02',
+    sourceUrl:'https://api-docs.deepseek.com/quick_start/pricing/' }
   ```
   Adding a provider or changing windows is a data edit, not an algorithm change.
 - **`TimeState` interface** (`src/schedule.ts:43-54`) — per-tick output:
@@ -98,7 +121,7 @@ The single source of truth, pure and vscode-free so it runs in Node and the exte
   `statusBarItem.errorBackground` renders orange in some themes and hides the red dot
   (red-on-red); dropping the fill keeps both states readable in light/dark themes and is
   color-blind safe (the word PEAK/OFF is always present).
-- Refresh: immediate paint + `setInterval(update, 30_000)`; interval disposed via
+- Refresh: immediate paint + `setInterval(update, 1_000)`; interval disposed via
   `context.subscriptions`.
 
 ### 5.3 Hover tooltip — `src/extension.ts`
@@ -122,7 +145,7 @@ Then: 🔴 Peak · 11:00 AM
 09:00 – 12:00 🔴 Peak
 14:00 – 18:00 🔴 Peak
 Other hours 🟢 Off-peak
-Reference pricing (V4-Pro) — $3.96 peak / $1.98 per 1M output · off-peak = 50%
+Reference pricing (deepseek-v4-pro) — output $3.96 peak / $1.98 off-peak per 1M · verified 2026-10-02
 Schedule — DeepSeek V4 · Asia/Shanghai · verify official docs
 📋 Copy current status
 📋 Copy today's schedule
@@ -194,7 +217,7 @@ All pass (`all schedule tests passed`). Formatting: `formatCountdown(125) === '2
   Cursor, Windsurf** and other forks.
 - Theme tokens, no hardcoded hex; emoji convey state so no theme-color dependency for meaning.
 - Publish: Microsoft Marketplace (`npx vsce publish`) and **Open VSX** (`npx ovsx publish`) for
-  fork users — set the real publisher id in `package.json` first.
+  fork users. Both registries use the publisher ID `AsimAliPeerzada`.
 
 ## 9. Known Deliberate Simplifications (roadmap)
 
