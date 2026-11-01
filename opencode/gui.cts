@@ -16,9 +16,9 @@
 //     }
 //   }
 
-import { Command, ComposerPill, Plugin, Slot, Style } from '@opencode/plugin/gui';
-import { createSignal } from 'solid-js';
-import { deepSeekV4, fmtTime, getState, windowText } from '../src/schedule';
+import { Command, ComposerPill, createKeyed, Plugin, Slot, Style } from '@opencode/plugin/gui';
+import { createSignal, onCleanup } from 'solid-js';
+import { deepSeekV4, fmtTime, formatCountdown, getState, windowText } from '../src/schedule';
 import {
 	adviceText,
 	alertText,
@@ -36,6 +36,8 @@ import {
 const PRICING_URL = deepSeekV4.sourceUrl;
 const PEAK_PILL_TITLE = 'DeepSeek peak pricing: off-peak discount not applied';
 const OFF_PEAK_PILL_TITLE = 'DeepSeek off-peak pricing: 50% off';
+const FREE_QUOTA_STORAGE_KEY = 'deepshift.freeQuotaUntil';
+const FREE_QUOTA_FALLBACK_MS = 60 * 60 * 1000;
 
 // The pill is styled through this aria-label prefix so the red override only
 // ever matches this plugin's pill, never another plugin's.
@@ -138,11 +140,12 @@ module.exports = Plugin.define({
 		const peakThreshold = Number(options.notifyBeforePeakStarts ?? 10);
 		const offPeakThreshold = Number(options.notifyBeforeOffPeakStarts ?? 10);
 
+		const modelId = (model) => String(model?.modelID ?? model?.id ?? '').toLowerCase();
+
 		const isDeepSeek = (model) => {
 			if (!model) return false;
 			const provider = String(model.providerID ?? '').toLowerCase();
-			const modelID = String(model.modelID ?? '').toLowerCase();
-			return provider.includes('deepseek') || modelID.includes('deepseek');
+			return provider.includes('deepseek') || modelId(model).includes('deepseek');
 		};
 
 		// OpenCode's free DeepSeek offering (for example
@@ -150,10 +153,56 @@ module.exports = Plugin.define({
 		// pricing does not apply. Treat it as a separate non-priced state.
 		const isFreeDeepSeek = (model) => {
 			if (!model) return false;
-			return isDeepSeek(model) && String(model.modelID ?? '').toLowerCase().endsWith('-free');
+			return isDeepSeek(model) && modelId(model).endsWith('-free');
 		};
 
 		const currentModel = () => ctx.screen.current()?.composer.model();
+
+		// Free-model quota state. OpenCode reports a `provider.free-limit` error
+		// with a retry-after delay; keep the reset time locally so the countdown
+		// survives a plugin reload or app restart.
+		const readFreeQuotaUntil = () => {
+			try {
+				const value = Number(globalThis.localStorage?.getItem(FREE_QUOTA_STORAGE_KEY) ?? 0);
+				return Number.isFinite(value) && value > Date.now() ? value : 0;
+			} catch {
+				return 0;
+			}
+		};
+
+		const writeFreeQuotaUntil = (until: number) => {
+			try {
+				if (until > Date.now()) globalThis.localStorage?.setItem(FREE_QUOTA_STORAGE_KEY, String(until));
+				else globalThis.localStorage?.removeItem(FREE_QUOTA_STORAGE_KEY);
+			} catch {
+				// Storage is optional; the countdown still works for this window.
+			}
+		};
+
+		const [freeQuotaUntil, setFreeQuotaUntilSignal] = createSignal(readFreeQuotaUntil());
+		const setFreeQuotaUntil = (until: number) => {
+			setFreeQuotaUntilSignal(until);
+			writeFreeQuotaUntil(until);
+		};
+		const freeQuotaLeft = () => Math.max(0, freeQuotaUntil() - Date.now());
+		const formatQuotaLeft = (ms: number) => formatCountdown(Math.max(1, Math.ceil(ms / 60000)));
+
+		let lastFreeQuotaToast = 0;
+		const announceFreeQuota = (until: number) => {
+			if (Math.abs(until - lastFreeQuotaToast) < 60_000) return;
+			lastFreeQuotaToast = until;
+			const message = `OpenCode free DeepSeek quota exhausted — available again in ${formatQuotaLeft(
+				until - Date.now()
+			)}.`;
+			ctx.toast.show({
+				title: 'DeepShift',
+				description: message,
+				variant: 'error',
+				icon: 'warning',
+				duration: 12000,
+			});
+			void ctx.attention?.notify?.({ title: 'DeepShift', message });
+		};
 
 		// One clock read per evaluation; everything else is derived from getState().
 		const status = () => {
@@ -200,16 +249,76 @@ module.exports = Plugin.define({
 			bar.hidden = false;
 		};
 
+		// Track free-quota exhaustion and successful free-model steps from the
+		// server event stream. The 429 carries the reset delay in retryAfterMs.
+		const stepModels = new Map();
+		const handleFreeLimit = (error) => {
+			if (error?.type !== 'provider.free-limit') return;
+			const retry = Number(error.retryAfterMs ?? 0);
+			const until = Date.now() + (retry > 0 ? retry : FREE_QUOTA_FALLBACK_MS);
+			setFreeQuotaUntil(until);
+			announceFreeQuota(until);
+		};
+
+		createKeyed(
+			() => ctx.servers.get('sidecar')?.data,
+			(data) => {
+				onCleanup(
+					data.on('session.step.started', (event) => {
+						const info = event?.data;
+						if (info?.assistantMessageID && info.model) {
+							stepModels.set(info.assistantMessageID, info.model);
+						}
+					})
+				);
+				onCleanup(
+					data.on('session.step.ended', (event) => {
+						const info = event?.data;
+						const model = info?.assistantMessageID ? stepModels.get(info.assistantMessageID) : undefined;
+						if (info?.assistantMessageID) stepModels.delete(info.assistantMessageID);
+						if (!model || !isFreeDeepSeek(model) || Number(info?.cost ?? 0) !== 0) return;
+						if (freeQuotaUntil() > 0) {
+							setFreeQuotaUntil(0);
+							lastFreeQuotaToast = 0;
+							ctx.toast.show({
+								title: 'DeepShift',
+								description: 'OpenCode free DeepSeek quota is available again.',
+								variant: 'success',
+								icon: 'circle-check',
+								duration: 8000,
+							});
+						}
+					})
+				);
+				onCleanup(
+					data.on('session.step.failed', (event) => {
+						const info = event?.data;
+						if (info?.assistantMessageID) stepModels.delete(info.assistantMessageID);
+						handleFreeLimit(info?.error);
+					})
+				);
+				onCleanup(data.on('session.execution.failed', (event) => handleFreeLimit(event?.data?.error)));
+			}
+		);
+
 		// A ticking signal makes the composer pill re-evaluate too, so its
 		// countdown and colour follow the clock without a page reload.
 		const [tick, setTick] = createSignal(0);
 
 		const copyStatus = () => {
 			const model = currentModel();
+			const left = freeQuotaLeft();
+			const freeStatus =
+				left > 0
+					? `OpenCode free DeepSeek quota exhausted — available again in ${formatQuotaLeft(left)}`
+					: 'DeepSeek free model — peak/off-peak pricing does not apply';
+			const baseStatus = statusLabel(getState());
 			void ctx.system.copy(
 				isFreeDeepSeek(model)
-					? 'DeepSeek free model — peak/off-peak pricing does not apply'
-					: statusLabel(getState())
+					? freeStatus
+					: left > 0
+						? `${baseStatus}\nOpenCode free DeepSeek quota available again in ${formatQuotaLeft(left)}.`
+						: baseStatus
 			);
 			ctx.toast.show({ title: 'DeepShift', description: 'Status copied.', duration: 4000 });
 		};
@@ -236,8 +345,8 @@ module.exports = Plugin.define({
 
 		// The same panel rows the VS Code QuickPick renders; separators and
 		// QuickPick-only fields are dropped for the composer-pill menu.
-		const pillRows = (state: ReturnType<typeof getState>) =>
-			buildPanelItems(state)
+		const pillRows = (state: ReturnType<typeof getState>) => {
+			const rows = buildPanelItems(state)
 				.filter((row) => !row.separator)
 				.map((row) => ({
 					id: row.id,
@@ -248,6 +357,20 @@ module.exports = Plugin.define({
 					run: rowAction(row.action, state),
 				}));
 
+			const left = freeQuotaLeft();
+			if (left > 0) {
+				rows.unshift({
+					id: 'free-quota',
+					label: 'Free DeepSeek quota',
+					detail: `available in ${formatQuotaLeft(left)}`,
+					icon: 'warning',
+					tone: 'warning',
+					run: undefined,
+				});
+			}
+			return rows;
+		};
+
 		ctx.add(ComposerPill, {
 			id: 'deepshift',
 			order: 10,
@@ -256,18 +379,31 @@ module.exports = Plugin.define({
 				const { state, model, freeDeepSeek } = status();
 
 				if (freeDeepSeek) {
+					const left = freeQuotaLeft();
+					const remaining = left > 0 ? formatQuotaLeft(left) : '';
 					return {
-						icon: 'circle-check',
-						tone: 'success',
-						label: 'DS FREE · no peak pricing',
-						title: 'DeepSeek free model: peak/off-peak pricing does not apply',
+						icon: left > 0 ? 'warning' : 'circle-check',
+						tone: left > 0 ? 'warning' : 'success',
+						label: left > 0 ? `DS FREE · ${remaining} left` : 'DS FREE · no peak pricing',
+						title:
+							left > 0
+								? 'OpenCode free DeepSeek quota exhausted'
+								: 'DeepSeek free model: peak/off-peak pricing does not apply',
 						rows: [
-							{
-								id: 'free',
-								label: 'Free model — no peak or off-peak pricing',
-								icon: 'circle-check',
-								tone: 'success',
-							},
+							left > 0
+								? {
+										id: 'free-quota',
+										label: 'Free quota exhausted',
+										detail: `available in ${remaining}`,
+										icon: 'warning',
+										tone: 'warning',
+									}
+								: {
+										id: 'free',
+										label: 'Free model — no peak or off-peak pricing',
+										icon: 'circle-check',
+										tone: 'success',
+									},
 							{
 								id: 'model',
 								label: model ? `${model.providerID}/${model.modelID}` : 'free model',
@@ -291,6 +427,11 @@ module.exports = Plugin.define({
 
 		const timer = setInterval(() => {
 			setTick((value) => value + 1);
+
+			if (freeQuotaUntil() > 0 && freeQuotaUntil() <= Date.now()) {
+				setFreeQuotaUntil(0);
+				lastFreeQuotaToast = 0;
+			}
 
 			const { state, freeDeepSeek } = status();
 
@@ -326,19 +467,22 @@ module.exports = Plugin.define({
 			run: () => {
 				const state = getState();
 				const model = currentModel();
+				const freeQuota = freeQuotaLeft();
 
 				if (isFreeDeepSeek(model)) {
 					ctx.toast.show({
-						title: 'DeepSeek free model',
+						title: freeQuota > 0 ? 'DeepSeek free quota exhausted' : 'DeepSeek free model',
 						description: [
-							'Peak/off-peak pricing does not apply to free OpenCode models.',
+							freeQuota > 0
+								? `Free quota available again in ${formatQuotaLeft(freeQuota)}.`
+								: 'Peak/off-peak pricing does not apply to free OpenCode models.',
 							model ? `Selected model: ${model.providerID}/${model.modelID}.` : '',
 							scheduleText(state),
 						]
 							.filter(Boolean)
 							.join('\n'),
-						variant: 'success',
-						icon: 'circle-check',
+						variant: freeQuota > 0 ? 'error' : 'success',
+						icon: freeQuota > 0 ? 'warning' : 'circle-check',
 						duration: 10000,
 					});
 					return;
@@ -350,6 +494,9 @@ module.exports = Plugin.define({
 						statusLabel(state),
 						state.isOffPeak ? 'Off-peak rates: 50% off.' : 'The off-peak discount is NOT applied: rates are 2x.',
 						scheduleText(state),
+						freeQuota > 0
+							? `OpenCode free DeepSeek quota available again in ${formatQuotaLeft(freeQuota)}.`
+							: '',
 						`Rates verified ${deepSeekV4.verifiedOn}: ${PRICING_URL}`,
 						model ? `Selected model: ${model.providerID}/${model.modelID}.` : '',
 					]

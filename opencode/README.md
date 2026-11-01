@@ -61,6 +61,10 @@ can register its server half before its GUI half is detected.
   page.
 - **Free DeepSeek models** (for example `opencode/deepseek-v4.1-flash-free`) are exempt: the pill shows
   a neutral `DS FREE · no peak pricing`, the peak bar stays hidden, and transition alerts are skipped.
+- **Free quota countdown**: when OpenCode returns its `provider.free-limit` 429, the plugin records the
+  retry delay and shows `DS FREE · 9h 54m left` on a free DeepSeek model, plus a "Free DeepSeek quota"
+  row on other models. The reset time is stored locally and survives a restart; a successful free
+  request clears it early.
 - **Commands** in the palette and as `/deepshift` in the composer:
   - `/deepshift` — current status, the advice for this phase, today's schedule and the pricing link.
   - `DeepShift: Copy status`, `DeepShift: Copy today's schedule`.
