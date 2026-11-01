@@ -1,0 +1,21 @@
+{
+  "name": "opencode-deepshift",
+  "version": "0.3.1",
+  "description": "DeepSeek peak/off-peak pricing indicator for OpenCode",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./server.ts",
+    "./gui-experimental": "./gui.cjs"
+  },
+  "files": ["server.ts", "gui.cjs", "README.md"],
+  "scripts": {
+    "prepack": "node build-opencode.mjs"
+  },
+  "dependencies": {
+    "@opencode/plugin": "^2.2.5"
+  },
+  "peerDependencies": {
+    "solid-js": ">=1.9.0"
+  }
+}

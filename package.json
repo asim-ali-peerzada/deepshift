@@ -44,8 +44,9 @@
 	"scripts": {
 		"compile": "tsc -p ./",
 		"watch": "tsc -watch -p ./",
-		"test": "tsc -p ./ && node out/schedule.test.js",
-		"vscode:prepublish": "tsc -p ./"
+		"test": "tsc -p ./ && node out/schedule.test.js && node out/view-model.test.js",
+		"vscode:prepublish": "tsc -p ./",
+		"build:opencode": "node opencode/build-opencode.mjs"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",

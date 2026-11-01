@@ -52,11 +52,17 @@ windsurf --install-extension deepshift-0.3.0.vsix
 ```
 Cursor/Windsurf users: also on Open VSX (`npx ovsx publish`).
 
+### OpenCode Desktop
+
+The same engine also ships as an OpenCode Desktop plugin in [`opencode/`](opencode/README.md):
+a red bar and a composer pill with the live countdown, `/deepshift`, and the same 10-minute alerts.
+See [`opencode/README.md`](opencode/README.md) for the local install and options.
+
 ## Develop
 
 ```sh
 npm install
-npm test      # tsc + schedule.test.ts (weekday, weekend, holiday, timezone-boundary, price card)
+npm test      # tsc + unit tests (weekday, weekend, holiday, timezone-boundary, price card)
 npm run watch # tsc -watch
 # F5 to launch Extension Development Host
 npx vsce package

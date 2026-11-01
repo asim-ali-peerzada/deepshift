@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 out/
+opencode/gui.cjs
 
 # VSIX packages (build artifacts)
 *.vsix
