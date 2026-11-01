@@ -59,6 +59,8 @@ can register its server half before its GUI half is detected.
   Click it for Next / Then transitions, the best off-peak window, today's schedule in your timezone,
   the per-model rate card, and actions to copy the status, copy today's schedule or open the pricing
   page.
+- **Free DeepSeek models** (for example `opencode/deepseek-v4.1-flash-free`) are exempt: the pill shows
+  a neutral `DS FREE · no peak pricing`, the peak bar stays hidden, and transition alerts are skipped.
 - **Commands** in the palette and as `/deepshift` in the composer:
   - `/deepshift` — current status, the advice for this phase, today's schedule and the pricing link.
   - `DeepShift: Copy status`, `DeepShift: Copy today's schedule`.

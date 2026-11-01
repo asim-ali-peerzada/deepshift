@@ -145,6 +145,14 @@ module.exports = Plugin.define({
 			return provider.includes('deepseek') || modelID.includes('deepseek');
 		};
 
+		// OpenCode's free DeepSeek offering (for example
+		// opencode/deepseek-v4.1-flash-free) is billed at zero, so peak/off-peak
+		// pricing does not apply. Treat it as a separate non-priced state.
+		const isFreeDeepSeek = (model) => {
+			if (!model) return false;
+			return isDeepSeek(model) && String(model.modelID ?? '').toLowerCase().endsWith('-free');
+		};
+
 		const currentModel = () => ctx.screen.current()?.composer.model();
 
 		// One clock read per evaluation; everything else is derived from getState().
@@ -152,7 +160,14 @@ module.exports = Plugin.define({
 			const now = new Date();
 			const state = getState(now);
 			const model = currentModel();
-			return { now, state, model, relevant: always || isDeepSeek(model) };
+			const freeDeepSeek = isFreeDeepSeek(model);
+			return {
+				now,
+				state,
+				model,
+				freeDeepSeek,
+				relevant: !freeDeepSeek && (always || isDeepSeek(model)),
+			};
 		};
 
 		// The window bar. The slot renders once, so this plugin drives the DOM
@@ -162,9 +177,9 @@ module.exports = Plugin.define({
 		ctx.add(Style, CSS);
 
 		const syncBar = () => {
-			const { state, model, relevant } = status();
+			const { state, model, relevant, freeDeepSeek } = status();
 
-			if (state.isOffPeak || !relevant) {
+			if (state.isOffPeak || freeDeepSeek || !relevant) {
 				bar.hidden = true;
 				return;
 			}
@@ -190,7 +205,12 @@ module.exports = Plugin.define({
 		const [tick, setTick] = createSignal(0);
 
 		const copyStatus = () => {
-			void ctx.system.copy(statusLabel(getState()));
+			const model = currentModel();
+			void ctx.system.copy(
+				isFreeDeepSeek(model)
+					? 'DeepSeek free model — peak/off-peak pricing does not apply'
+					: statusLabel(getState())
+			);
 			ctx.toast.show({ title: 'DeepShift', description: 'Status copied.', duration: 4000 });
 		};
 
@@ -233,7 +253,30 @@ module.exports = Plugin.define({
 			order: 10,
 			show: () => {
 				tick();
-				const { state } = status();
+				const { state, model, freeDeepSeek } = status();
+
+				if (freeDeepSeek) {
+					return {
+						icon: 'circle-check',
+						tone: 'success',
+						label: 'DS FREE · no peak pricing',
+						title: 'DeepSeek free model: peak/off-peak pricing does not apply',
+						rows: [
+							{
+								id: 'free',
+								label: 'Free model — no peak or off-peak pricing',
+								icon: 'circle-check',
+								tone: 'success',
+							},
+							{
+								id: 'model',
+								label: model ? `${model.providerID}/${model.modelID}` : 'free model',
+								icon: 'models',
+							},
+						],
+					};
+				}
+
 				return {
 					icon: state.isOffPeak ? 'circle-check' : 'warning',
 					tone: statusTone(state),
@@ -249,20 +292,23 @@ module.exports = Plugin.define({
 		const timer = setInterval(() => {
 			setTick((value) => value + 1);
 
-			const { state } = status();
-			const threshold = state.nextIsPeak ? peakThreshold : offPeakThreshold;
+			const { state, freeDeepSeek } = status();
 
-			if (threshold > 0 && state.minutesRemaining <= threshold && state.transitionAt !== lastWarned) {
-				lastWarned = state.transitionAt;
-				const message = alertText(state, false);
-				ctx.toast.show({
-					title: 'DeepShift',
-					description: message,
-					variant: state.nextIsPeak ? 'error' : 'success',
-					icon: state.nextIsPeak ? 'warning' : 'circle-check',
-					duration: 10000,
-				});
-				void ctx.attention?.notify?.({ title: 'DeepShift', message });
+			if (!freeDeepSeek) {
+				const threshold = state.nextIsPeak ? peakThreshold : offPeakThreshold;
+
+				if (threshold > 0 && state.minutesRemaining <= threshold && state.transitionAt !== lastWarned) {
+					lastWarned = state.transitionAt;
+					const message = alertText(state, false);
+					ctx.toast.show({
+						title: 'DeepShift',
+						description: message,
+						variant: state.nextIsPeak ? 'error' : 'success',
+						icon: state.nextIsPeak ? 'warning' : 'circle-check',
+						duration: 10000,
+					});
+					void ctx.attention?.notify?.({ title: 'DeepShift', message });
+				}
 			}
 
 			syncBar();
@@ -280,6 +326,24 @@ module.exports = Plugin.define({
 			run: () => {
 				const state = getState();
 				const model = currentModel();
+
+				if (isFreeDeepSeek(model)) {
+					ctx.toast.show({
+						title: 'DeepSeek free model',
+						description: [
+							'Peak/off-peak pricing does not apply to free OpenCode models.',
+							model ? `Selected model: ${model.providerID}/${model.modelID}.` : '',
+							scheduleText(state),
+						]
+							.filter(Boolean)
+							.join('\n'),
+						variant: 'success',
+						icon: 'circle-check',
+						duration: 10000,
+					});
+					return;
+				}
+
 				ctx.toast.show({
 					title: state.isOffPeak ? 'DeepSeek off-peak pricing' : 'DeepSeek peak pricing',
 					description: [
