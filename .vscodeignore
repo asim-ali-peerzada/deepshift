@@ -1,5 +1,6 @@
 .vscode/**
 src/**
+opencode/**
 out/**/*.test.js
 REPORT.md
 *.vsix
